@@ -4,7 +4,7 @@ The URepo addon allows you to automatically install the addons you have in your 
 
 For more information you can have a look at the wiki entry:
 
-[Add-on:TheAudioDBSync](https://github.com/robwebset/script.urepo/wiki)
+[Add-on:URepo](https://github.com/robwebset/script.urepo/wiki)
 
 You can install this addon from: [Repository:URepo](http://www.urepo.org/)
 

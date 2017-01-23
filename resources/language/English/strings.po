@@ -51,3 +51,11 @@ msgstr ""
 msgctxt "#32007"
 msgid "Addon Installations Complete"
 msgstr ""
+
+msgctxt "#32008"
+msgid "Successfully Installed"
+msgstr ""
+
+msgctxt "#32009"
+msgid "Failed To Install"
+msgstr ""
