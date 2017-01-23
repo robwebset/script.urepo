@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import sys
 import traceback
+import base64
+import urllib2
 import xbmc
 import xbmcgui
 import xbmcaddon
@@ -50,18 +52,19 @@ class AddonTemplate():
         # Create the correct directory in the addons section on disk
         if not xbmcvfs.exists(self.addonRoot):
             log("AddonTemplate: Addons directory does not exist: %s" % self.addonRoot)
-            return
+            return False
 
         # Check if the addon directory already exists
         addonDir = os_path_join(self.addonRoot, addonId)
         addonDir = os_path_join(addonDir, "")
         if xbmcvfs.exists(addonDir):
             log("AddonTemplate: Addon directory already exists: %s" % addonDir)
-            return
+            return False
 
         # Create the addon directory
         if not xbmcvfs.mkdir(addonDir):
             log("AddonTemplate: Failed to create addon directory %s" % addonDir)
+            return False
 
         # Create the addon.xml file contents
         addonXml = self.addonTemplate % (addonId, addonName)
@@ -69,11 +72,84 @@ class AddonTemplate():
 
         # Create the addon.xml file on disk
         try:
-            f = xbmcvfs.File(addonXmlLocation, 'w')
-            f.write(addonXml)
+            f = xbmcvfs.File(addonXmlLocation, 'wb')
+            f.write(str(addonXml))
             f.close()
         except:
             log("AddonTemplate: Failed to create addon.xml file %s (error = %s)" % (addonXmlLocation, traceback.format_exc()))
+            return False
+
+        return True
+
+    # Method to check for a plugin that has remained as an empty template
+    def checkForNonEmptyTemplate(self, addonId, tidyup=False):
+        if not xbmcvfs.exists(self.addonRoot):
+            log("AddonTemplate: Addons directory does not exist: %s" % self.addonRoot)
+            return False
+
+        # Check if the addon directory already exists
+        addonDir = os_path_join(self.addonRoot, addonId)
+        addonDir = os_path_join(addonDir, "")
+        if not xbmcvfs.exists(addonDir):
+            log("AddonTemplate: Addon directory does not exists: %s" % addonDir)
+            return False
+
+        # List all the files in the directory
+        dirs, files = xbmcvfs.listdir(addonDir)
+        if (len(dirs) + len(files)) < 2:
+            log("AddonTemplate: Addon directory only contains one file")
+            xbmcvfs.rmdir(addonDir)
+            return False
+
+        return True
+
+
+# Class to retrieve data from URepo
+class URepo():
+    def __init__(self, defaultUsername):
+        self.url_prefix = base64.b64decode('aHR0cDovL3d3dy51cmVwby5vcmcvYXBpL3YxL2pzb24vMS8=')
+        self.username = defaultUsername
+
+    def getAddonCollection(self):
+        collectionUrl = "%suser.php?user=%s" % (self.url_prefix, self.username)
+
+        collection = []
+
+        # Make the call to theaudiodb.com
+        json_details = self._makeCall(collectionUrl)
+
+        if json_details not in [None, ""]:
+            json_response = json.loads(json_details)
+
+            # The results of the search come back as an array of entries
+            if 'addons' in json_response:
+                for addon in json_response['addons']:
+                    addonId = addon['idAddonKodi']
+                    log("URepo: Addon collection: %s" % addonId)
+                    addonDetails = {'id': addonId, 'name': addon['strAddon']}
+                    collection.append(addonDetails)
+
+        return collection
+
+    # Perform the API call
+    def _makeCall(self, url):
+        log("makeCall: Making query using %s" % url)
+        resp_details = None
+        try:
+            req = urllib2.Request(url)
+            req.add_header('Accept', 'application/json')
+            req.add_header('User-Agent', 'Kodi Browser')
+            response = urllib2.urlopen(req)
+            resp_details = response.read()
+            try:
+                response.close()
+                log("makeCall: Request returned %s" % resp_details)
+            except:
+                pass
+        except:
+            log("makeCall: Failed to retrieve details from %s: %s" % (url, traceback.format_exc()))
+
+        return resp_details
 
 
 ##################################
@@ -93,10 +169,11 @@ if __name__ == '__main__':
         # Show a dialog detailing that the username is not set
         xbmcgui.Dialog().ok(ADDON.getLocalizedString(32001), ADDON.getLocalizedString(32005))
     else:
-        # TODO: Make a call to the URepo repository to get the list of addons
+        # Make a call to the URepo repository to get the list of addons
         # selected for this user
-        urepoAddons = []
-        urepoAddons.append('screensaver.random')
+        urepo = URepo(username)
+        urepoAddons = urepo.getAddonCollection()
+        del urepo
 
         requiredAddons = []
 
@@ -108,23 +185,26 @@ if __name__ == '__main__':
             json_response = json.loads(json_query)
 
             if ("result" in json_response) and ('addons' in json_response['result']):
-                # Check each of the screensavers that are installed on the system
+                # Check each of the addons that are installed on the system
                 for addonItem in json_response['result']['addons']:
                     addonId = addonItem['addonid']
-
-                    # Now we are left with only the addon screensavers
                     log("URepo: Detected Installed Addon: %s" % addonId)
                     existingAddons.append(addonId)
 
             # Remove any addon that is already installed
             for urepoAddon in urepoAddons:
-                if urepoAddon in existingAddons:
-                    log("URepo: Skipping %s as already installed" % urepoAddon)
+                if urepoAddon['id'] in existingAddons:
+                    log("URepo: Skipping %s as already installed" % urepoAddon['id'])
                 else:
                     requiredAddons.append(urepoAddon)
 
         if len(requiredAddons) > 0:
             selected = []
+            # Extract the display name
+            displayList = []
+            for anAddon in requiredAddons:
+                displayList.append(anAddon['name'])
+
             # Display a list of addons that will be installed
             # From Kodi v17 onwards there is an option to pre-select the items in the list
             if kodiVersion > 16:
@@ -132,9 +212,9 @@ if __name__ == '__main__':
                 preselectIdxs = []
                 for i in range(0, len(requiredAddons)):
                     preselectIdxs.append(i)
-                selected = xbmcgui.Dialog().multiselect(ADDON.getLocalizedString(32006), requiredAddons, preselect=preselectIdxs)
+                selected = xbmcgui.Dialog().multiselect(ADDON.getLocalizedString(32006), displayList, preselect=preselectIdxs)
             else:
-                selected = xbmcgui.Dialog().multiselect(ADDON.getLocalizedString(32006), requiredAddons)
+                selected = xbmcgui.Dialog().multiselect(ADDON.getLocalizedString(32006), displayList)
 
             if (selected in [None, ""]) or (len(selected) < 1):
                 log("URepo: Install operation cancelled, no addons to install")
@@ -148,21 +228,43 @@ if __name__ == '__main__':
         # Now create a template for each addon
         addonTemplate = AddonTemplate()
         for addon in addonsToInstall:
-            addonTemplate.createTemplateAddon(addon, addon + " Name")
-        del addonTemplate
+            addonTemplate.createTemplateAddon(addon['id'], addon['name'])
 
         # The following call will read in the template addons that were created
         # into the Kodi installation, however they will be marked as disabled
         xbmc.executebuiltin("UpdateLocalAddons", True)
 
         # Make a call for each addon to enable it as it will have been added as disabled originally
-        for addonId in addonsToInstall:
-            log("URepo: Enabling addon %s" % addonId)
-            xbmc.executeJSONRPC('{"jsonrpc": "2.0", "method": "Addons.SetAddonEnabled", "params": { "addonid": "%s", "enabled": "toggle" }, "id": 1}' % addonId)
+        for addonToInstall in addonsToInstall:
+            log("URepo: Enabling addon %s" % addonToInstall['id'])
+            xbmc.executeJSONRPC('{"jsonrpc": "2.0", "method": "Addons.SetAddonEnabled", "params": { "addonid": "%s", "enabled": "toggle" }, "id": 1}' % addonToInstall['id'])
 
         # Now force a refresh of all of the addons so that we get the templates that
         # were created replaced with the real addons
         xbmc.executebuiltin("UpdateAddonRepos", True)
 
-        xbmcgui.Dialog().ok(ADDON.getLocalizedString(32001), ADDON.getLocalizedString(32007))
+        # Now check to make sure all the addons were updated OK
+        i = 5
+        failedCount = 100
+        while (i > 0) and (failedCount > 0) and (not xbmc.abortRequested):
+            xbmc.sleep(1000)
+            latestFailedCount = failedCount
+            failedCount = 0
+            i = i - 1
+            tidyup = False
+            if i < 1:
+                tidyup = True
+            for addon in addonsToInstall:
+                if not addonTemplate.checkForNonEmptyTemplate(addon['id'], tidyup):
+                    failedCount = failedCount + 1
+            # Check for the case where the number of failures is going down
+            # this means we are still installing so give another 5 seconds
+            if failedCount != latestFailedCount:
+                i = 5
+        del addonTemplate
+
+        successCountDisplay = "%s: %d" % (ADDON.getLocalizedString(32008), len(addonsToInstall) - failedCount)
+        failedCountDisplay = "%s: %d" % (ADDON.getLocalizedString(32009), failedCount)
+        xbmcgui.Dialog().ok(ADDON.getLocalizedString(32001), ADDON.getLocalizedString(32007), successCountDisplay, failedCountDisplay)
+
     log("URepo Script Finished")
