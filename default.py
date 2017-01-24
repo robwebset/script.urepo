@@ -98,7 +98,10 @@ class AddonTemplate():
         dirs, files = xbmcvfs.listdir(addonDir)
         if (len(dirs) + len(files)) < 2:
             log("AddonTemplate: Addon directory only contains one file")
-            xbmcvfs.rmdir(addonDir)
+            if tidyup:
+                for aFile in files:
+                    xbmcvfs.delete(os_path_join(addonDir, aFile))
+                xbmcvfs.rmdir(addonDir)
             return False
 
         return True
@@ -169,34 +172,39 @@ if __name__ == '__main__':
         # Show a dialog detailing that the username is not set
         xbmcgui.Dialog().ok(ADDON.getLocalizedString(32001), ADDON.getLocalizedString(32005))
     else:
-        # Make a call to the URepo repository to get the list of addons
-        # selected for this user
-        urepo = URepo(username)
-        urepoAddons = urepo.getAddonCollection()
-        del urepo
+        try:
+            xbmc.executebuiltin("ActivateWindow(busydialog)")
 
-        requiredAddons = []
+            # Make a call to the URepo repository to get the list of addons
+            # selected for this user
+            urepo = URepo(username)
+            urepoAddons = urepo.getAddonCollection()
+            del urepo
 
-        if len(urepoAddons) > 0:
-            existingAddons = []
+            requiredAddons = []
 
-            # Make the call to find out all the addons that are currently installed
-            json_query = xbmc.executeJSONRPC('{"jsonrpc": "2.0", "method": "Addons.GetAddons", "params": { "properties": ["enabled"] }, "id": 1}')
-            json_response = json.loads(json_query)
+            if len(urepoAddons) > 0:
+                existingAddons = []
 
-            if ("result" in json_response) and ('addons' in json_response['result']):
-                # Check each of the addons that are installed on the system
-                for addonItem in json_response['result']['addons']:
-                    addonId = addonItem['addonid']
-                    log("URepo: Detected Installed Addon: %s" % addonId)
-                    existingAddons.append(addonId)
+                # Make the call to find out all the addons that are currently installed
+                json_query = xbmc.executeJSONRPC('{"jsonrpc": "2.0", "method": "Addons.GetAddons", "params": { "properties": ["enabled"] }, "id": 1}')
+                json_response = json.loads(json_query)
 
-            # Remove any addon that is already installed
-            for urepoAddon in urepoAddons:
-                if urepoAddon['id'] in existingAddons:
-                    log("URepo: Skipping %s as already installed" % urepoAddon['id'])
-                else:
-                    requiredAddons.append(urepoAddon)
+                if ("result" in json_response) and ('addons' in json_response['result']):
+                    # Check each of the addons that are installed on the system
+                    for addonItem in json_response['result']['addons']:
+                        addonId = addonItem['addonid']
+                        log("URepo: Detected Installed Addon: %s" % addonId)
+                        existingAddons.append(addonId)
+
+                # Remove any addon that is already installed
+                for urepoAddon in urepoAddons:
+                    if urepoAddon['id'] in existingAddons:
+                        log("URepo: Skipping %s as already installed" % urepoAddon['id'])
+                    else:
+                        requiredAddons.append(urepoAddon)
+        finally:
+            xbmc.executebuiltin("Dialog.Close(busydialog)")
 
         if len(requiredAddons) > 0:
             selected = []
@@ -225,46 +233,55 @@ if __name__ == '__main__':
 
     # Perform the install for the required addons
     if len(addonsToInstall) > 0:
-        # Now create a template for each addon
-        addonTemplate = AddonTemplate()
-        for addon in addonsToInstall:
-            addonTemplate.createTemplateAddon(addon['id'], addon['name'])
+        successCountDisplay = ""
+        failedCountDisplay = ""
+        try:
+            xbmc.executebuiltin("ActivateWindow(busydialog)")
 
-        # The following call will read in the template addons that were created
-        # into the Kodi installation, however they will be marked as disabled
-        xbmc.executebuiltin("UpdateLocalAddons", True)
-
-        # Make a call for each addon to enable it as it will have been added as disabled originally
-        for addonToInstall in addonsToInstall:
-            log("URepo: Enabling addon %s" % addonToInstall['id'])
-            xbmc.executeJSONRPC('{"jsonrpc": "2.0", "method": "Addons.SetAddonEnabled", "params": { "addonid": "%s", "enabled": "toggle" }, "id": 1}' % addonToInstall['id'])
-
-        # Now force a refresh of all of the addons so that we get the templates that
-        # were created replaced with the real addons
-        xbmc.executebuiltin("UpdateAddonRepos", True)
-
-        # Now check to make sure all the addons were updated OK
-        i = 5
-        failedCount = 100
-        while (i > 0) and (failedCount > 0) and (not xbmc.abortRequested):
-            xbmc.sleep(1000)
-            latestFailedCount = failedCount
-            failedCount = 0
-            i = i - 1
-            tidyup = False
-            if i < 1:
-                tidyup = True
+            # Now create a template for each addon
+            addonTemplate = AddonTemplate()
             for addon in addonsToInstall:
-                if not addonTemplate.checkForNonEmptyTemplate(addon['id'], tidyup):
-                    failedCount = failedCount + 1
-            # Check for the case where the number of failures is going down
-            # this means we are still installing so give another 5 seconds
-            if failedCount != latestFailedCount:
-                i = 5
-        del addonTemplate
+                addonTemplate.createTemplateAddon(addon['id'], addon['name'])
 
-        successCountDisplay = "%s: %d" % (ADDON.getLocalizedString(32008), len(addonsToInstall) - failedCount)
-        failedCountDisplay = "%s: %d" % (ADDON.getLocalizedString(32009), failedCount)
+            # The following call will read in the template addons that were created
+            # into the Kodi installation, however they will be marked as disabled
+            xbmc.executebuiltin("UpdateLocalAddons", True)
+
+            # Make a call for each addon to enable it as it will have been added as disabled originally
+            for addonToInstall in addonsToInstall:
+                log("URepo: Enabling addon %s" % addonToInstall['id'])
+                xbmc.executeJSONRPC('{"jsonrpc": "2.0", "method": "Addons.SetAddonEnabled", "params": { "addonid": "%s", "enabled": "toggle" }, "id": 1}' % addonToInstall['id'])
+
+            # Now force a refresh of all of the addons so that we get the templates that
+            # were created replaced with the real addons
+            xbmc.executebuiltin("UpdateAddonRepos", True)
+
+            # Now check to make sure all the addons were updated OK
+            i = 5
+            failedCount = 100
+            while (i > 0) and (failedCount > 0) and (not xbmc.abortRequested):
+                xbmc.sleep(1000)
+                latestFailedCount = failedCount
+                failedCount = 0
+                i = i - 1
+                tidyup = False
+                if i < 1:
+                    tidyup = True
+                for addon in addonsToInstall:
+                    if not addonTemplate.checkForNonEmptyTemplate(addon['id'], tidyup):
+                        failedCount = failedCount + 1
+                # Check for the case where the number of failures is going down
+                # this means we are still installing so give another 5 seconds
+                if failedCount != latestFailedCount:
+                    i = 5
+            del addonTemplate
+
+            successCountDisplay = "%s: %d" % (ADDON.getLocalizedString(32008), len(addonsToInstall) - failedCount)
+            failedCountDisplay = "%s: %d" % (ADDON.getLocalizedString(32009), failedCount)
+        finally:
+            xbmc.executebuiltin("Dialog.Close(busydialog)")
+
+        # Display the summary of what was completed
         xbmcgui.Dialog().ok(ADDON.getLocalizedString(32001), ADDON.getLocalizedString(32007), successCountDisplay, failedCountDisplay)
 
     log("URepo Script Finished")
