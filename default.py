@@ -81,36 +81,11 @@ class AddonTemplate():
 
         return True
 
-    # Method to check for a plugin that has remained as an empty template
-    def checkForNonEmptyTemplate(self, addonId, tidyup=False):
-        if not xbmcvfs.exists(self.addonRoot):
-            log("AddonTemplate: Addons directory does not exist: %s" % self.addonRoot)
-            return False
-
-        # Check if the addon directory already exists
-        addonDir = os_path_join(self.addonRoot, addonId)
-        addonDir = os_path_join(addonDir, "")
-        if not xbmcvfs.exists(addonDir):
-            log("AddonTemplate: Addon directory does not exists: %s" % addonDir)
-            return False
-
-        # List all the files in the directory
-        dirs, files = xbmcvfs.listdir(addonDir)
-        if (len(dirs) + len(files)) < 2:
-            log("AddonTemplate: Addon directory only contains one file")
-            if tidyup:
-                for aFile in files:
-                    xbmcvfs.delete(os_path_join(addonDir, aFile))
-                xbmcvfs.rmdir(addonDir)
-            return False
-
-        return True
-
 
 # Class to retrieve data from URepo
 class URepo():
     def __init__(self, defaultUsername):
-        self.url_prefix = base64.b64decode('aHR0cDovL3d3dy51cmVwby5vcmcvYXBpL3YxL2pzb24vMS8=')
+        self.url_prefix = base64.b64decode('aHR0cDovL3d3dy51cmVwby5vcmcvYXBpL3YxL2pzb24vMjU4OS8=')
         self.username = defaultUsername
 
     def getAddonCollection(self):
@@ -235,53 +210,23 @@ if __name__ == '__main__':
     if len(addonsToInstall) > 0:
         successCountDisplay = ""
         failedCountDisplay = ""
-        try:
-            xbmc.executebuiltin("ActivateWindow(busydialog)")
 
-            # Now create a template for each addon
-            addonTemplate = AddonTemplate()
-            for addon in addonsToInstall:
-                addonTemplate.createTemplateAddon(addon['id'], addon['name'])
+        # Now create a template for each addon
+        addonTemplate = AddonTemplate()
+        for addon in addonsToInstall:
+            addonTemplate.createTemplateAddon(addon['id'], addon['name'])
 
-            # The following call will read in the template addons that were created
-            # into the Kodi installation, however they will be marked as disabled
-            xbmc.executebuiltin("UpdateLocalAddons", True)
+        # The following call will read in the template addons that were created
+        # into the Kodi installation, however they will be marked as disabled
+        xbmc.executebuiltin("UpdateLocalAddons", True)
 
-            # Make a call for each addon to enable it as it will have been added as disabled originally
-            for addonToInstall in addonsToInstall:
-                log("URepo: Enabling addon %s" % addonToInstall['id'])
-                xbmc.executeJSONRPC('{"jsonrpc": "2.0", "method": "Addons.SetAddonEnabled", "params": { "addonid": "%s", "enabled": "toggle" }, "id": 1}' % addonToInstall['id'])
+        # Make a call for each addon to enable it as it will have been added as disabled originally
+        for addonToInstall in addonsToInstall:
+            log("URepo: Enabling addon %s" % addonToInstall['id'])
+            xbmc.executeJSONRPC('{"jsonrpc": "2.0", "method": "Addons.SetAddonEnabled", "params": { "addonid": "%s", "enabled": "toggle" }, "id": 1}' % addonToInstall['id'])
 
-            # Now force a refresh of all of the addons so that we get the templates that
-            # were created replaced with the real addons
-            xbmc.executebuiltin("UpdateAddonRepos", True)
-
-            # Now check to make sure all the addons were updated OK
-            i = 5
-            failedCount = 100
-            while (i > 0) and (failedCount > 0) and (not xbmc.abortRequested):
-                xbmc.sleep(1000)
-                latestFailedCount = failedCount
-                failedCount = 0
-                i = i - 1
-                tidyup = False
-                if i < 1:
-                    tidyup = True
-                for addon in addonsToInstall:
-                    if not addonTemplate.checkForNonEmptyTemplate(addon['id'], tidyup):
-                        failedCount = failedCount + 1
-                # Check for the case where the number of failures is going down
-                # this means we are still installing so give another 5 seconds
-                if failedCount != latestFailedCount:
-                    i = 5
-            del addonTemplate
-
-            successCountDisplay = "%s: %d" % (ADDON.getLocalizedString(32008), len(addonsToInstall) - failedCount)
-            failedCountDisplay = "%s: %d" % (ADDON.getLocalizedString(32009), failedCount)
-        finally:
-            xbmc.executebuiltin("Dialog.Close(busydialog)")
-
-        # Display the summary of what was completed
-        xbmcgui.Dialog().ok(ADDON.getLocalizedString(32001), ADDON.getLocalizedString(32007), successCountDisplay, failedCountDisplay)
+        # Now force a refresh of all of the addons so that we get the templates that
+        # were created replaced with the real addons
+        xbmc.executebuiltin("UpdateAddonRepos", True)
 
     log("URepo Script Finished")
