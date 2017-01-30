@@ -3,7 +3,7 @@ import os
 import xbmc
 import xbmcaddon
 
-ADDON = xbmcaddon.Addon(id='script.urepo')
+ADDON = xbmcaddon.Addon(id='script.urepo.helper')
 ADDON_ID = ADDON.getAddonInfo('id')
 
 
