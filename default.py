@@ -19,7 +19,7 @@ from resources.lib.settings import Settings
 from resources.lib.settings import os_path_split
 from resources.lib.settings import os_path_join
 
-ADDON = xbmcaddon.Addon(id='script.urepo')
+ADDON = xbmcaddon.Addon(id='script.urepo.helper')
 
 
 # Class to handle the creation of dummy addons
@@ -103,6 +103,9 @@ class URepo():
             if 'addons' in json_response:
                 for addon in json_response['addons']:
                     addonId = addon['idAddonKodi']
+                    # Skip the URepo helper addon, we don't want to install ourself
+                    if addonId in [None, "", "script.urepo.helper"]:
+                        continue
                     log("URepo: Addon collection: %s" % addonId)
                     addonDetails = {'id': addonId, 'name': addon['strAddon']}
                     collection.append(addonDetails)
@@ -138,15 +141,30 @@ if __name__ == '__main__':
 
     kodiVersion = Settings.getKodiVersion()
 
-    addonsToInstall = []
-
     # Make sure the username to link to the URepo repository is set
     username = Settings.getUsername()
+
+    urepoInstalled = False
 
     if username in [None, ""]:
         # Show a dialog detailing that the username is not set
         xbmcgui.Dialog().ok(ADDON.getLocalizedString(32001), ADDON.getLocalizedString(32005))
     else:
+        # Make sure the URepo repository is installed - otherwise things do not work
+        json_query = xbmc.executeJSONRPC('{"jsonrpc": "2.0", "method": "Addons.GetAddonDetails", "params": { "addonid": "repository.urepo", "properties": ["enabled", "broken", "name", "author"]  }, "id": 1}')
+        json_response = json.loads(json_query)
+
+        if ("result" in json_response) and ('addon' in json_response['result']):
+            addonItem = json_response['result']['addon']
+            if (addonItem['enabled'] is True) and (addonItem['broken'] is False) and (addonItem['type'] == 'xbmc.addon.repository') and (addonItem['addonid'] == 'repository.urepo'):
+                urepoInstalled = True
+
+        if not urepoInstalled:
+            xbmcgui.Dialog().ok(ADDON.getLocalizedString(32001), ADDON.getLocalizedString(32008))
+
+    addonsToInstall = []
+
+    if urepoInstalled:
         try:
             xbmc.executebuiltin("ActivateWindow(busydialog)")
 
@@ -220,10 +238,14 @@ if __name__ == '__main__':
         # into the Kodi installation, however they will be marked as disabled
         xbmc.executebuiltin("UpdateLocalAddons", True)
 
+        xbmc.sleep(1000)
+
         # Make a call for each addon to enable it as it will have been added as disabled originally
         for addonToInstall in addonsToInstall:
             log("URepo: Enabling addon %s" % addonToInstall['id'])
             xbmc.executeJSONRPC('{"jsonrpc": "2.0", "method": "Addons.SetAddonEnabled", "params": { "addonid": "%s", "enabled": "toggle" }, "id": 1}' % addonToInstall['id'])
+
+        xbmc.sleep(1000)
 
         # Now force a refresh of all of the addons so that we get the templates that
         # were created replaced with the real addons
