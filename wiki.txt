@@ -1,0 +1,31 @@
+[[https://github.com/robwebset/script.urepo.helper/raw/master/icon.png]]
+
+== Introduction ==
+You can install this addon from: [https://www.urepo.org URepo Repository]
+<br />
+<br />
+The URepo Helper addon allows you to automatically install the addons in your collection on your Kodi installation. Simply enter your username in the addon settings and then run the script and it will display the list of addons that you have added to your collection on the [https://www.urepo.org URepo] site. You can then select to have them all installed, or reduce your selection to only a few addons that you wish to install.
+<br />
+<br />
+== Settings ==
+=== General ===
+{| border="0"
+|- valign=top
+|
+:'''Username'''
+::Your [https://www.urepo.org URepo] username
+:<u>'''''Debugging'''''</u>
+::
+:'''Enable debug logging'''
+::Enables URepo Helper debug logging (Required if reporting a problem) - for this to work, system-wide Kodi logging must also be enabled
+|}
+
+<br />
+<br />
+== Debugging ==
+If reporting a problem, please also provide a debug log. To do this you need to enable BOTH:
+* Kodi logging from the main setting menu
+* URepo Helper debug from the URepo Helper addon settings menu
+Please do not paste the log into the forum thread, just link to it.
+<br />
+<br />
